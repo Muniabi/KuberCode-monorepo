@@ -2,12 +2,12 @@
 
 Локальный workspace из независимых репозиториев:
 
-| Папка                 | Домен / порт     | Назначение                              |
-| --------------------- | ---------------- | --------------------------------------- |
-| `kubercode-marketing` | :3001            | лендинг, SEO, маркетинг                 |
-| `kubercode-app`       | :3002            | кабинет, auth UI, треки                 |
-| `kubercode-admin`     | :3003            | CMS: треки, модули, пользователи        |
-| `kubercode-api`       | :4000            | backend API (Go + Gin + Mongo)          |
+| Папка                 | Домен / порт | Назначение                       | Репо                                                          |
+| --------------------- | ------------ | -------------------------------- | ------------------------------------------------------------- |
+| `kubercode-marketing` | :3001        | лендинг, SEO, маркетинг          | [KuberCode-v0.3](https://github.com/Muniabi/KuberCode-v0.3)   |
+| `kubercode-app`       | :3002        | кабинет, auth UI, треки          | [kubercode-app](https://github.com/Muniabi/kubercode-app)     |
+| `kubercode-admin`     | :3003        | CMS: треки, модули, пользователи | [kubercode-admin](https://github.com/Muniabi/kubercode-admin) |
+| `kubercode-api`       | :4000        | backend API (Go + Gin + Mongo)   | [kubercode-api](https://github.com/Muniabi/kubercode-api)     |
 
 Подробности: [docs/architecture.md](docs/architecture.md).
 
