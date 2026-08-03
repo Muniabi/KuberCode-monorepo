@@ -1,12 +1,12 @@
 [submodule "kubercode-api"]
 	path = kubercode-api
-	url = ../kubercode-api.git
+	url = https://github.com/Muniabi/kubercode-api.git
 [submodule "kubercode-app"]
 	path = kubercode-app
-	url = ../kubercode-app.git
+	url = https://github.com/Muniabi/kubercode-app.git
 [submodule "kubercode-admin"]
 	path = kubercode-admin
-	url = ../kubercode-admin.git
+	url = https://github.com/Muniabi/kubercode-admin.git
 [submodule "kubercode-marketing"]
 	path = kubercode-marketing
-	url = ../KuberCode-v0.3.git
+	url = https://github.com/Muniabi/KuberCode-v0.3.git
