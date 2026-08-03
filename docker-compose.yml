@@ -1,0 +1,167 @@
+# KuberCode full stack — one command from the monorepo root:
+#   cp .env.example .env
+#   docker compose up -d --build
+#
+# Public URLs (NEXT_PUBLIC_*) are baked into Next.js at build time.
+# After changing them: docker compose up -d --build
+#
+# Optional Judge0 sandbox:
+#   docker compose --profile judge0 up -d
+# Docs: DOCKER.md
+
+name: kubercode
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGODB_DB:-kubercode}
+    ports:
+      - "${MONGO_HOST_PORT:-27018}:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./kubercode-api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${API_HOST_PORT:-4000}:4000"
+    environment:
+      PORT: "4000"
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      MONGODB_DB: ${MONGODB_DB:-kubercode}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access-secret-min-32-chars!!}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-secret-min-32-chars!}
+      ACCESS_TTL: ${ACCESS_TTL:-1h}
+      REFRESH_TTL: ${REFRESH_TTL:-168h}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JUDGE0_URL: ${JUDGE0_URL:-}
+      JUDGE0_TOKEN: ${JUDGE0_TOKEN:-}
+      RUNNER_WORKERS: ${RUNNER_WORKERS:-2}
+      SEED_ON_BOOT: ${SEED_ON_BOOT:-true}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin123456}
+
+  marketing:
+    build:
+      context: ./kubercode-marketing
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${MARKETING_HOST_PORT:-3001}:3001"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://api:4000}
+
+  app:
+    build:
+      context: ./kubercode-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_MARKETING_URL: ${NEXT_PUBLIC_MARKETING_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${APP_HOST_PORT:-3002}:3002"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_MARKETING_URL: ${NEXT_PUBLIC_MARKETING_URL}
+
+  admin:
+    build:
+      context: ./kubercode-admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${ADMIN_HOST_PORT:-3003}:3003"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+
+  # Optional: docker compose --profile judge0 up -d
+  judge0-db:
+    profiles: ["judge0"]
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: ${JUDGE0_DB_PASSWORD:-judge0_dev_password}
+    volumes:
+      - judge0_postgres:/var/lib/postgresql/data
+
+  judge0-redis:
+    profiles: ["judge0"]
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - judge0_redis:/data
+
+  judge0-server:
+    profiles: ["judge0"]
+    image: judge0/judge0:1.13.1
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - ./kubercode-api/judge0.conf:/judge0.conf:ro
+    ports:
+      - "${JUDGE0_HOST_PORT:-2358}:2358"
+    depends_on:
+      - judge0-db
+      - judge0-redis
+
+  judge0-worker:
+    profiles: ["judge0"]
+    image: judge0/judge0:1.13.1
+    restart: unless-stopped
+    privileged: true
+    command: ["./scripts/workers"]
+    volumes:
+      - ./kubercode-api/judge0.conf:/judge0.conf:ro
+    depends_on:
+      - judge0-db
+      - judge0-redis
+
+volumes:
+  mongo_data:
+  redis_data:
+  judge0_postgres:
+  judge0_redis:

@@ -11,10 +11,21 @@
 
 Подробности: [docs/architecture.md](docs/architecture.md).
 
-## Быстрый старт
+## Запуск всего стека через Docker (продакшен / сервер)
+
+Один `.env` + `docker compose` из корня монорепо:
 
 ```bash
-# 1) MongoDB — нужен запущенный Docker Desktop
+cp .env.example .env
+docker compose up -d --build
+```
+
+IP/домены, CORS, очистка volumes/images/кэша — в **[DOCKER.md](DOCKER.md)**.
+
+## Быстрый старт (локальная разработка)
+
+```bash
+# 1) MongoDB + Redis — нужен запущенный Docker Desktop
 cd kubercode-api
 docker compose up -d
 # Compass URI: mongodb://127.0.0.1:27018  →  БД kubercode
