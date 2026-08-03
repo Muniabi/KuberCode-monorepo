@@ -8,6 +8,10 @@
 # Domain (port 80): set DOMAIN + subdomain NEXT_PUBLIC_* URLs — see DOCKER.md
 # Direct ports 3001–4000: docker compose --profile exposed up -d
 # Optional Judge0: docker compose --profile judge0 up -d
+#
+# IMPORTANT: use the SAME profiles for down as for up, otherwise
+# judge0/exposed containers stay up and the network stays "in use":
+#   docker compose --profile judge0 --profile exposed down -v
 # Docs: DOCKER.md
 
 name: kubercode

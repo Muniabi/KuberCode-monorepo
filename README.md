@@ -17,14 +17,14 @@
 git clone --recurse-submodules git@github.com:Muniabi/KuberCode-monorepo.git
 cd KuberCode-monorepo
 cp .env.example .env
-# для домена: DOMAIN=kubercode.mikata.ru и NEXT_PUBLIC_* без портов — см. DOCKER.md
+# DOMAIN + NEXT_PUBLIC_* без портов; JWT_* — см. DOCKER.md
 docker compose up -d --build
 ```
 
-Caddy слушает **:80** и разводит поддомены (`app.` / `admin.` / `api.`).  
-Без `--recurse-submodules` папки `kubercode-*` не скачаются.
+Caddy на **:80** → поддомены `app.` / `admin.` / `api.`.  
+`down` с теми же `--profile`, что и `up` (иначе Judge0 останется и сеть будет «in use»).
 
-IP/домены, DNS, CORS, очистка — в **[DOCKER.md](DOCKER.md)**.
+Полная инструкция, Ubuntu, DNS, типичные ошибки: **[DOCKER.md](DOCKER.md)**.
 
 ## Быстрый старт (локальная разработка)
 
