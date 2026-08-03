@@ -1,5 +1,34 @@
 # Architecture — KuberCode
 
+## Обзор
+
+```mermaid
+flowchart LR
+  subgraph public [Public_hosts]
+    mktHost[marketing_domain]
+    appHost[app_domain]
+    adminHost[admin_domain]
+    apiHost[api_domain]
+  end
+  subgraph apps [Apps]
+    mkt[kubercode_marketing]
+    app[kubercode_app]
+    admin[kubercode_admin]
+    api[kubercode_api]
+  end
+  mktHost --> mkt
+  appHost --> app
+  adminHost --> admin
+  apiHost --> api
+  mkt -->|NEXT_PUBLIC_API_URL| api
+  app -->|NEXT_PUBLIC_API_URL| api
+  admin -->|NEXT_PUBLIC_API_URL| api
+  mkt -.->|NEXT_PUBLIC_APP_URL| app
+  app -.->|NEXT_PUBLIC_MARKETING_URL| mkt
+```
+
+В Docker на сервере все публичные хосты обычно идут через Caddy на :80 — см. [DOCKER.md](../DOCKER.md).
+
 ## Границы ответственности
 
 ### kubercode-marketing (`kubercode.ru`)
@@ -33,6 +62,25 @@
 - CORS: marketing + app + admin origins
 
 На сервере backend может жить в отдельной папке деплоя; локально — `kubercode-api/`.
+
+## Запрос Check / Run (упрощённо)
+
+```mermaid
+sequenceDiagram
+  participant App as kubercode_app
+  participant API as kubercode_api
+  participant Redis as redis
+  participant Runner as local_or_Judge0
+  App->>API: POST_run_or_check
+  API->>Redis: enqueue_job
+  API-->>App: job_id
+  App->>API: poll_status
+  Redis->>Runner: worker_picks_job
+  Runner-->>API: results
+  API-->>App: tests_and_hints
+```
+
+Подробнее: [exercise-runner.md](./exercise-runner.md).
 
 ## Env (локально)
 

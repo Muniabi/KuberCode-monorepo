@@ -2,6 +2,23 @@
 
 Локальный workspace из независимых репозиториев:
 
+```mermaid
+flowchart LR
+  subgraph clients [Frontends]
+    mkt[marketing_:3001]
+    app[app_:3002]
+    admin[admin_:3003]
+  end
+  api[kubercode_api_:4000]
+  mongo[(MongoDB)]
+  redis[(Redis)]
+  mkt --> api
+  app --> api
+  admin --> api
+  api --> mongo
+  api --> redis
+```
+
 | Папка                 | Домен / порт | Назначение                       | Репо                                                          |
 | --------------------- | ------------ | -------------------------------- | ------------------------------------------------------------- |
 | `kubercode-marketing` | :3001        | лендинг, SEO, маркетинг          | [KuberCode-v0.3](https://github.com/Muniabi/KuberCode-v0.3)   |
@@ -12,6 +29,15 @@
 Подробности: [docs/architecture.md](docs/architecture.md).
 
 ## Запуск всего стека через Docker (продакшен / сервер)
+
+```mermaid
+flowchart LR
+  user[Browser_:80] --> caddy[caddy]
+  caddy -->|"Host apex"| mkt[marketing:3001]
+  caddy -->|"Host app.*"| app[app:3002]
+  caddy -->|"Host admin.*"| adm[admin:3003]
+  caddy -->|"Host api.*"| api[api:4000]
+```
 
 ```bash
 git clone --recurse-submodules git@github.com:Muniabi/KuberCode-monorepo.git

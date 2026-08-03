@@ -2,6 +2,28 @@
 
 Один clone монорепозитория + `docker-compose.yml` поднимают стек: MongoDB, Redis, API, marketing, app, admin и **Caddy на порту 80** (поддомены без `:3001`).
 
+```mermaid
+flowchart TB
+  subgraph host [Server_host]
+    proxy[Caddy_:80]
+    subgraph compose [docker_compose]
+      marketing[marketing:3001]
+      app[app:3002]
+      admin[admin:3003]
+      api[api:4000]
+      mongo[(mongo)]
+      redis[(redis)]
+    end
+  end
+  browser[Browser] -->|HTTP_:80| proxy
+  proxy --> marketing
+  proxy --> app
+  proxy --> admin
+  proxy --> api
+  api --> mongo
+  api --> redis
+```
+
 ## Содержание
 
 1. [Установка Docker на Ubuntu](#установка-docker-на-ubuntu)
@@ -55,6 +77,14 @@ sudo usermod -aG docker $USER
 
 Вложенные `kubercode-*` — отдельные репозитории. Без submodule после clone папки **пустые**, `docker compose build` падает.
 
+```mermaid
+flowchart LR
+  monorepo[KuberCode_monorepo] --> apiRepo[kubercode_api]
+  monorepo --> appRepo[kubercode_app]
+  monorepo --> adminRepo[kubercode_admin]
+  monorepo --> mktRepo[kubercode_marketing]
+```
+
 ```bash
 git clone --recurse-submodules git@github.com:Muniabi/KuberCode-monorepo.git
 cd KuberCode-monorepo
@@ -83,6 +113,15 @@ git submodule update --init --recursive
 
 Файл `.env` **намеренно не в репозитории** (секреты JWT, пароли). В git только шаблон **`.env.example`**.
 
+```mermaid
+flowchart LR
+  example[".env.example_in_git"] -->|cp| envFile[".env_on_server"]
+  envFile --> compose[docker_compose]
+  compose -->|build_args| nextApps[Next_images]
+  compose -->|runtime_env| api[api_container]
+  compose -->|DOMAIN| caddy[Caddy]
+```
+
 На сервере один раз:
 
 ```bash
@@ -108,6 +147,23 @@ docker compose up -d --build
 | `exposed` | прямые порты хоста 3001–4000 (минуя Caddy) |
 | `judge0` | Judge0 server/worker + postgres/redis |
 
+```mermaid
+flowchart TB
+  subgraph alwaysOn [default_stack]
+    proxy[proxy_:80]
+    fronts[marketing_app_admin]
+    apiCore[api_mongo_redis]
+  end
+  subgraph optExposed [profile_exposed]
+    ports["host_:3001-4000"]
+  end
+  subgraph optJudge0 [profile_judge0]
+    j0[judge0_stack]
+  end
+  alwaysOn -.->|optional| optExposed
+  alwaysOn -.->|optional| optJudge0
+```
+
 **`up` и `down` вызывайте с теми же `--profile`, с которыми поднимали сервисы.**
 
 Иначе типичная ошибка:
@@ -117,6 +173,15 @@ docker compose down
 ! Network kubercode_default Resource is still in use
 docker compose ps
 # всё ещё крутятся judge0-* …
+```
+
+```mermaid
+flowchart LR
+  badUp["up --profile judge0"] --> badDown["down_without_profile"]
+  badDown --> stuck[judge0_still_running]
+  stuck --> netBusy["network_in_use"]
+  goodUp["up --profile judge0"] --> goodDown["down --profile judge0"]
+  goodDown --> clean[all_stopped]
 ```
 
 Judge0 (и `*-host` из `exposed`) не останавливаются обычным `down` без профиля.
@@ -192,6 +257,15 @@ docker compose --profile exposed up -d
 JUDGE0_URL=http://judge0-server:2358
 ```
 
+```mermaid
+flowchart LR
+  app[app] --> api[api]
+  api -->|JUDGE0_URL| j0[judge0_server]
+  j0 --> j0db[(judge0_postgres)]
+  j0 --> j0redis[(judge0_redis)]
+  j0 --> worker[judge0_worker]
+```
+
 2. Поднять:
 
 ```bash
@@ -230,7 +304,22 @@ docker compose --profile judge0 down -v
 Браузер без порта ходит на **:80**. Раньше снаружи слушались только 3001–4000 — на 80 никто не отвечал.  
 `kubercode.mikata.ru:3001` работал, потому что вы явно били в marketing.
 
+```mermaid
+flowchart LR
+  user[Browser] -->|"kubercode.mikata.ru_:80"| miss[Nothing_listening]
+  user -->|"kubercode.mikata.ru:3001"| mkt[marketing]
+```
+
 Сейчас **Caddy (`proxy`)** слушает :80 и разводит по Host:
+
+```mermaid
+flowchart LR
+  user[Browser_:80] --> caddy[caddy]
+  caddy -->|"Host kubercode.mikata.ru"| mkt[marketing:3001]
+  caddy -->|"Host app.kubercode.mikata.ru"| app[app:3002]
+  caddy -->|"Host admin.kubercode.mikata.ru"| adm[admin:3003]
+  caddy -->|"Host api.kubercode.mikata.ru"| api[api:4000]
+```
 
 | Host | Сервис |
 |------|--------|
