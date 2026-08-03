@@ -10,10 +10,29 @@
 - ~4 GB RAM свободно (с Judge0 — больше)
 - На Linux для Judge0 нужен privileged mode
 
+## Clone монорепо (обязательно с submodule)
+
+Вложенные `kubercode-*` — отдельные git-репозитории. Без `.gitmodules` / `--recurse-submodules` после clone папки будут пустыми.
+
+```bash
+git clone --recurse-submodules git@github.com:Muniabi/KuberCode-monorepo.git
+cd KuberCode-monorepo
+
+# если уже клонировали без submodule:
+git submodule update --init --recursive
+```
+
+HTTPS (тот же протокол, что и у clone — URL submodule относительные `../…`):
+
+```bash
+git clone --recurse-submodules https://github.com/Muniabi/KuberCode-monorepo.git
+cd KuberCode-monorepo
+```
+
 ## Быстрый старт (localhost)
 
 ```bash
-cd KuberCode-v0.3          # корень монорепо
+cd KuberCode-monorepo      # корень монорепо
 cp .env.example .env
 # при желании отредактируйте секреты JWT_* и SEED_ADMIN_PASSWORD
 

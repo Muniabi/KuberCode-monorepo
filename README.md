@@ -13,12 +13,14 @@
 
 ## Запуск всего стека через Docker (продакшен / сервер)
 
-Один `.env` + `docker compose` из корня монорепо:
-
 ```bash
+git clone --recurse-submodules git@github.com:Muniabi/KuberCode-monorepo.git
+cd KuberCode-monorepo
 cp .env.example .env
 docker compose up -d --build
 ```
+
+Без `--recurse-submodules` (или `git submodule update --init --recursive`) папки `kubercode-*` не скачаются.
 
 IP/домены, CORS, очистка volumes/images/кэша — в **[DOCKER.md](DOCKER.md)**.
 
