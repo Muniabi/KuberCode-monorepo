@@ -5,8 +5,9 @@
 # Public URLs (NEXT_PUBLIC_*) are baked into Next.js at build time.
 # After changing them: docker compose up -d --build
 #
-# Optional Judge0 sandbox:
-#   docker compose --profile judge0 up -d
+# Domain (port 80): set DOMAIN + subdomain NEXT_PUBLIC_* URLs — see DOCKER.md
+# Direct ports 3001–4000: docker compose --profile exposed up -d
+# Optional Judge0: docker compose --profile judge0 up -d
 # Docs: DOCKER.md
 
 name: kubercode
@@ -49,8 +50,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "${API_HOST_PORT:-4000}:4000"
+    expose:
+      - "4000"
     environment:
       PORT: "4000"
       CORS_ORIGINS: ${CORS_ORIGINS}
@@ -78,8 +79,8 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    ports:
-      - "${MARKETING_HOST_PORT:-3001}:3001"
+    expose:
+      - "3001"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
@@ -95,8 +96,8 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    ports:
-      - "${APP_HOST_PORT:-3002}:3002"
+    expose:
+      - "3002"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       NEXT_PUBLIC_MARKETING_URL: ${NEXT_PUBLIC_MARKETING_URL}
@@ -110,10 +111,68 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    ports:
-      - "${ADMIN_HOST_PORT:-3003}:3003"
+    expose:
+      - "3003"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+
+  # Reverse proxy on :80 — Host-based routing (see deploy/Caddyfile)
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - marketing
+      - app
+      - admin
+      - api
+    ports:
+      - "${PROXY_HTTP_PORT:-80}:80"
+      # Uncomment when enabling HTTPS / Let's Encrypt:
+      # - "${PROXY_HTTPS_PORT:-443}:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Optional direct host ports (bypass proxy):
+  #   docker compose --profile exposed up -d
+  api-host:
+    profiles: ["exposed"]
+    image: alpine:3.20
+    network_mode: "service:api"
+    depends_on:
+      - api
+    ports:
+      - "${API_HOST_PORT:-4000}:4000"
+
+  marketing-host:
+    profiles: ["exposed"]
+    image: alpine:3.20
+    network_mode: "service:marketing"
+    depends_on:
+      - marketing
+    ports:
+      - "${MARKETING_HOST_PORT:-3001}:3001"
+
+  app-host:
+    profiles: ["exposed"]
+    image: alpine:3.20
+    network_mode: "service:app"
+    depends_on:
+      - app
+    ports:
+      - "${APP_HOST_PORT:-3002}:3002"
+
+  admin-host:
+    profiles: ["exposed"]
+    image: alpine:3.20
+    network_mode: "service:admin"
+    depends_on:
+      - admin
+    ports:
+      - "${ADMIN_HOST_PORT:-3003}:3003"
 
   # Optional: docker compose --profile judge0 up -d
   judge0-db:
@@ -163,5 +222,7 @@ services:
 volumes:
   mongo_data:
   redis_data:
+  caddy_data:
+  caddy_config:
   judge0_postgres:
   judge0_redis:

@@ -1,0 +1,25 @@
+# Host-based reverse proxy. DOMAIN comes from compose env (see .env).
+# HTTP only for now — enable TLS later with auto_https and port 443.
+{
+	auto_https off
+}
+
+http://{$DOMAIN} {
+	encode gzip
+	reverse_proxy marketing:3001
+}
+
+http://app.{$DOMAIN} {
+	encode gzip
+	reverse_proxy app:3002
+}
+
+http://admin.{$DOMAIN} {
+	encode gzip
+	reverse_proxy admin:3003
+}
+
+http://api.{$DOMAIN} {
+	encode gzip
+	reverse_proxy api:4000
+}

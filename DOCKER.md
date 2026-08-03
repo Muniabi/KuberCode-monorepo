@@ -1,6 +1,6 @@
 # Запуск KuberCode через Docker
 
-Один clone монорепозитория + один `docker-compose.yml` в корне поднимают весь стек: MongoDB, Redis, API, marketing (:3001), app (:3002), admin (:3003).
+Один clone монорепозитория + один `docker-compose.yml` в корне поднимают весь стек: MongoDB, Redis, API, marketing, app, admin и **Caddy** на порту **80** (поддомены без `:3001`).
 
 Корневой `Dockerfile` — подсказка-entrypoint (стек многосервисный). Реальная оркестрация — Compose.
 
@@ -9,6 +9,7 @@
 - Docker Engine + Docker Compose v2
 - ~4 GB RAM свободно (с Judge0 — больше)
 - На Linux для Judge0 нужен privileged mode
+- Для домена: DNS A-записи + открытый порт **80** на файрволе
 
 ## Clone монорепо (обязательно с submodule)
 
@@ -29,24 +30,31 @@ git clone --recurse-submodules https://github.com/Muniabi/KuberCode-monorepo.git
 cd KuberCode-monorepo
 ```
 
-## Быстрый старт (localhost)
+## Быстрый старт (localhost через proxy :80)
 
 ```bash
-cd KuberCode-monorepo      # корень монорепо
+cd KuberCode-monorepo
 cp .env.example .env
 # при желании отредактируйте секреты JWT_* и SEED_ADMIN_PASSWORD
 
 docker compose up -d --build
 ```
 
-Откройте:
+Откройте (современные браузеры резолвят `*.localhost` → 127.0.0.1):
 
-| Сервис    | URL                     |
-|-----------|-------------------------|
-| Marketing | http://localhost:3001   |
-| App       | http://localhost:3002   |
-| Admin     | http://localhost:3003   |
-| API       | http://localhost:4000   |
+| Сервис    | URL                         |
+|-----------|-----------------------------|
+| Marketing | http://localhost            |
+| App       | http://app.localhost        |
+| Admin     | http://admin.localhost      |
+| API       | http://api.localhost/health |
+
+Прямые порты `3001–4000` по умолчанию **не** публикуются. Если нужны:
+
+```bash
+docker compose --profile exposed up -d
+# http://localhost:3001 … :4000
+```
 
 Админ после seed: `admin@kubercode.local` / пароль из `SEED_ADMIN_PASSWORD`.
 
@@ -54,6 +62,7 @@ docker compose up -d --build
 
 ```bash
 docker compose logs -f
+docker compose logs -f proxy
 docker compose logs -f api
 ```
 
@@ -62,6 +71,79 @@ docker compose logs -f api
 ```bash
 docker compose down
 ```
+
+## Домен без портов (например kubercode.mikata.ru)
+
+Браузер на `http://kubercode.mikata.ru` ходит на **порт 80**. Caddy (`proxy`) принимает Host и проксирует:
+
+| Host | Сервис |
+|------|--------|
+| `kubercode.mikata.ru` | marketing |
+| `app.kubercode.mikata.ru` | app |
+| `admin.kubercode.mikata.ru` | admin |
+| `api.kubercode.mikata.ru` | api |
+
+### 1) DNS
+
+A-записи на IP сервера (пример `201.24.116.55`):
+
+- `kubercode.mikata.ru`
+- `app.kubercode.mikata.ru`
+- `admin.kubercode.mikata.ru`
+- `api.kubercode.mikata.ru`
+
+Или apex + wildcard: `kubercode.mikata.ru` и `*.kubercode.mikata.ru`.
+
+Дождитесь распространения DNS (`dig +short app.kubercode.mikata.ru`).
+
+### 2) `.env` на сервере
+
+```env
+DOMAIN=kubercode.mikata.ru
+
+NEXT_PUBLIC_API_URL=http://api.kubercode.mikata.ru
+NEXT_PUBLIC_MARKETING_URL=http://kubercode.mikata.ru
+NEXT_PUBLIC_APP_URL=http://app.kubercode.mikata.ru
+NEXT_PUBLIC_ADMIN_URL=http://admin.kubercode.mikata.ru
+CORS_ORIGINS=http://kubercode.mikata.ru,http://app.kubercode.mikata.ru,http://admin.kubercode.mikata.ru
+
+INTERNAL_API_URL=http://api:4000
+MONGODB_URI=mongodb://mongo:27017
+REDIS_URL=redis://redis:6379
+COOKIE_SECURE=false
+```
+
+Смените `JWT_*` и `SEED_ADMIN_PASSWORD`. Порты в публичных URL **не указывайте**.
+
+### 3) Запуск / обновление
+
+```bash
+cd ~/KuberCode-monorepo
+git pull
+git submodule update --init --recursive
+
+# отредактируйте .env как выше
+docker compose up -d --build
+```
+
+Обязателен `--build` после смены `NEXT_PUBLIC_*`.
+
+Файрвол: откройте **80**. Прямые `3001–4000` можно закрыть (не используйте `--profile exposed` на проде).
+
+### 4) Проверка
+
+```bash
+curl -sI http://kubercode.mikata.ru
+curl -sI http://app.kubercode.mikata.ru
+curl -sI http://admin.kubercode.mikata.ru
+curl -s http://api.kubercode.mikata.ru/health
+
+# если DNS ещё не готов — проверка Host на IP:
+curl -sI -H "Host: kubercode.mikata.ru" http://127.0.0.1/
+curl -s -H "Host: api.kubercode.mikata.ru" http://127.0.0.1/health
+```
+
+HTTPS (Let's Encrypt) — следующий шаг; сейчас HTTP на `:80` (`auto_https off` в `deploy/Caddyfile`).
 
 ## Переменные окружения (одинаковые имена везде)
 
@@ -72,6 +154,7 @@ docker compose down
 
 | Переменная | Кто использует | Назначение |
 |------------|----------------|------------|
+| `DOMAIN` | Caddy | Apex-домен для Host-routing |
 | `NEXT_PUBLIC_API_URL` | app, admin, marketing | URL API, который видит браузер |
 | `NEXT_PUBLIC_MARKETING_URL` | app | Ссылки на лендинг |
 | `NEXT_PUBLIC_APP_URL` | marketing | Ссылки «в кабинет» |
@@ -92,58 +175,53 @@ docker compose up -d --build
 | `REDIS_URL` | `redis://redis:6379` |
 | `INTERNAL_API_URL` | `http://api:4000` (SSR marketing → API) |
 
-Браузер **не** ходит на `mongo` / `api` по внутренним именам — только на проброшенные порты хоста.
+Браузер ходит на **proxy :80** (или на прямые порты с `--profile exposed`), не на имена `mongo` / `api` внутри Docker.
 
 ## Сценарии: какие URL указывать
 
-### 1) Всё на одной машине, доступ с неё же
+### 1) Локально через proxy
 
-Оставьте значения из `.env.example` (`localhost`).
+Оставьте блок localhost из `.env.example` (`DOMAIN=localhost`, `*.localhost`).
 
-### 2) Сервер с публичным IP, доступ по IP
+### 2) Сервер только по IP (без домена)
 
-Подставьте IP сервера (пример `203.0.113.10`):
+Нужны прямые порты + URL с портами:
 
 ```env
+DOMAIN=localhost
 NEXT_PUBLIC_API_URL=http://203.0.113.10:4000
 NEXT_PUBLIC_MARKETING_URL=http://203.0.113.10:3001
 NEXT_PUBLIC_APP_URL=http://203.0.113.10:3002
 NEXT_PUBLIC_ADMIN_URL=http://203.0.113.10:3003
 CORS_ORIGINS=http://203.0.113.10:3001,http://203.0.113.10:3002,http://203.0.113.10:3003
-
-INTERNAL_API_URL=http://api:4000
-MONGODB_URI=mongodb://mongo:27017
-REDIS_URL=redis://redis:6379
 ```
-
-Затем:
 
 ```bash
-docker compose up -d --build
+docker compose --profile exposed up -d --build
 ```
 
-Порты можно сменить через `*_HOST_PORT` в `.env`, если 3001/4000 заняты.
+### 3) Домен на :80 (рекомендуется)
 
-### 3) Домены + HTTPS (reverse proxy: nginx/Caddy)
+См. секцию [Домен без портов](#домен-без-портов-например-kubercodemicataru) выше.
 
-Снаружи — HTTPS-домены, внутри Compose порты как есть; proxy проксирует на `127.0.0.1:3001` и т.д.
+### 4) Домены + HTTPS (позже)
+
+Когда включите TLS в Caddy и порт 443:
 
 ```env
 NEXT_PUBLIC_API_URL=https://api.example.com
-NEXT_PUBLIC_MARKETING_URL=https://www.example.com
+NEXT_PUBLIC_MARKETING_URL=https://example.com
 NEXT_PUBLIC_APP_URL=https://app.example.com
 NEXT_PUBLIC_ADMIN_URL=https://admin.example.com
-CORS_ORIGINS=https://www.example.com,https://app.example.com,https://admin.example.com
+CORS_ORIGINS=https://example.com,https://app.example.com,https://admin.example.com
 COOKIE_SECURE=true
 ```
 
-Пересоберите фронты после смены URL.
-
-### 4) Обновление кода на сервере
+### 5) Обновление кода на сервере
 
 ```bash
 git pull
-# обновите submodule SHA при необходимости, либо pull внутри каждой папки kubercode-*
+git submodule update --init --recursive
 docker compose up -d --build
 ```
 
@@ -182,7 +260,7 @@ docker compose down -v
 ```
 
 Когда: хотите «с нуля» (seed заново, без старых пользователей/прогресса).  
-**Удаляет** volumes `mongo_data`, `redis_data` (и judge0 volumes, если были).
+**Удаляет** volumes `mongo_data`, `redis_data`, `caddy_*` (и judge0 volumes, если были).
 
 ### Удалить также образы, собранные этим compose-проектом
 
@@ -206,19 +284,11 @@ docker compose up -d
 Осторожно: затронет **другие** проекты на том же Docker daemon.
 
 ```bash
-# останов + volumes нашего проекта
 docker compose down -v --rmi local
-
-# висячие образы / сети / build cache (глобально)
 docker system prune -af
 docker builder prune -af
-
-# ВНИМАНИЕ: удалит ВСЕ неиспользуемые volumes на хосте
-# docker volume prune -f
+# docker volume prune -f   # ОСТОРОЖНО: все неиспользуемые volumes на хосте
 ```
-
-Когда: диск забит, хотите вычистить весь Docker после тестов.  
-`volume prune` без `-v` у compose может стереть чужие данные — используйте осознанно.
 
 ### Удалить только кэш сборки
 
@@ -226,15 +296,14 @@ docker builder prune -af
 docker builder prune -af
 ```
 
-Когда: мало места, контейнеры/volumes трогать не нужно.
-
 ## Полезные команды
 
 ```bash
 docker compose ps
-docker compose pull          # обновить mongo/redis/judge0 images
-docker compose restart api
-docker compose exec api sh   # если нужен shell в api (образ bookworm)
+docker compose pull
+docker compose restart proxy
+docker compose logs -f proxy
+docker compose exec api sh
 ```
 
 Mongo с хоста (Compass): `mongodb://127.0.0.1:27018` (порт `MONGO_HOST_PORT`).
@@ -242,8 +311,9 @@ Mongo с хоста (Compass): `mongodb://127.0.0.1:27018` (порт `MONGO_HOST
 ## Структура
 
 ```
-KuberCode-v0.3/
-  docker-compose.yml      # оркестратор всего стека
+KuberCode-monorepo/
+  docker-compose.yml      # оркестратор + Caddy proxy
+  deploy/Caddyfile        # Host → marketing/app/admin/api
   Dockerfile              # meta / docs entrypoint
   .env.example            # единый шаблон env
   DOCKER.md               # этот файл
