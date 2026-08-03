@@ -1,97 +1,137 @@
 # Phase B — multi-language sandbox, очередь, auth, БД
 
-План **следующего** этапа после Phase A ([implementation-plan-v2.md](./implementation-plan-v2.md)).
+План после Phase A ([implementation-plan-v2.md](./implementation-plan-v2.md)).
 
 ## Зачем
 
-Сейчас runner — in-process (`node` / `go test` на машине API). Это ок для локалки и JS/Go, но нельзя масштабировать на C++, C#, Rust, Docker/K8s-задачи и много пользователей.
+In-process runner (Phase A) не масштабируется на C++/C#/Rust и много пользователей. Phase B выносит исполнение в очередь + Judge0.
 
-## Рекомендуемый инструмент: **Judge0** (self-hosted)
+## Рекомендуемый инструмент: **Judge0 CE** (self-hosted)
 
 | Критерий | Judge0 | Piston | E2B |
 | --- | --- | --- | --- |
 | Языки | 60–90+ | очень много | шаблоны VM |
 | Изоляция | Isolate + Docker | Isolate + Docker | firecracker/VM |
-| API | async submit + poll / webhook | sync execute | SDK |
-| Self-host | Docker Compose | Docker Compose | cloud-first |
-| Fit для KuberCode | **лучший выбор** для edu + много языков | проще API, но public API ограничен | скорее AI-агенты |
+| API | async submit + poll | sync execute | SDK |
+| Fit | **выбран для KuberCode** | проще API | AI-агенты |
 
-**Решение Phase B:** self-host **Judge0 CE** за нашим API. App/Admin **не** ходят в Judge0 напрямую — только `kubercode-api` с user JWT.
+App/Admin **не** ходят в Judge0 напрямую — только `kubercode-api` с user JWT.
 
-Альтернатива позже: Piston (MIT) если нужен simpler sync API; Rustbox — если узкий набор языков и жёсткий latency.
-
-Для задач «поднять контейнер / манифест k8s» — отдельные runners (не Judge0): ephemeral Docker/kind job с жёсткими лимитами и отдельной очередью.
-
-## Архитектура Phase B
+## Архитектура (реализовано)
 
 ```mermaid
 sequenceDiagram
   participant App
   participant API as kubercode_api
-  participant Q as Redis_queue
-  participant W as runner_worker
-  participant J0 as Judge0
+  participant Q as Redis
+  participant W as run_worker
+  participant J0 as Judge0_or_local
   participant DB as Mongo
   App->>API: POST /exercises/:id/run Bearer
-  API->>API: auth + load tests from DB
-  API->>Q: enqueue job
+  API->>DB: insert run_jobs queued
+  API->>Q: LPUSH jobId
   API-->>App: 202 jobId
-  W->>Q: dequeue
-  W->>J0: submit source + language_id
-  J0-->>W: result
-  W->>API: map hints
-  W->>DB: save run + progress + points
+  W->>Q: BRPOP
+  W->>J0: execute harness
+  J0-->>W: stdout JSON tests
+  W->>DB: update job + progress + points
   App->>API: GET /runs/:jobId Bearer
-  API-->>App: tests + hints
+  API-->>App: status tests hints
 ```
 
-## Auth-матрица (обязательно)
+### Компоненты в репо
 
-Правило: **всё персональное — только с Bearer токена пользователя**. Public — каталог.
+| Файл | Назначение |
+| --- | --- |
+| [kubercode-api/docker-compose.yml](../kubercode-api/docker-compose.yml) | Mongo + **Redis** (очередь API) |
+| [kubercode-api/docker-compose.judge0.yml](../kubercode-api/docker-compose.judge0.yml) | Judge0 CE + Postgres + Redis Judge0 |
+| [kubercode-api/judge0.conf](../kubercode-api/judge0.conf) | конфиг Judge0 (dev) |
+| `internal/runner/judge0.go` | HTTP-клиент Judge0 + harness JS/Go |
+| `internal/runner/languages.go` | language → Judge0 `language_id` |
+| `internal/runner/engine.go` | Judge0 → fallback local pool |
+| `internal/queue/` | Redis queue + workers |
+| `run_jobs` Mongo | jobs + TTL 7 дней |
 
-| Метод | Путь | Auth | Примечание |
-| --- | --- | --- | --- |
-| GET | `/v1/tracks` | public | каталог |
-| GET | `/v1/tracks/:slug` | public | roadmap без чужого прогресса |
-| GET | `/v1/tracks/:slug/exercises/:id` | public | **без** `tests.code` |
-| POST | `/v1/exercises/:id/run` | **user** | свой код |
-| GET | `/v1/runs/:jobId` | **user** | только свой job |
-| GET/PUT | `/v1/me/progress*` | **user** | только свой userId из JWT |
-| GET/POST | `/v1/me/enrollments*` | **user** | |
-| GET | `/v1/me/stats` | **user** | |
-| GET | `/v1/me/leaderboard?track=` | **user** (или public aggregate) | без чужих email |
-| * | `/v1/admin/*` | **admin** | |
+### Env
 
-Никогда не принимать `userId` из body для выдачи чужих данных — только из JWT.
+```env
+REDIS_URL=redis://127.0.0.1:6379
+JUDGE0_URL=http://127.0.0.1:2358
+JUDGE0_TOKEN=
+RUNNER_WORKERS=2
+```
 
-## БД (новые коллекции)
+Без `JUDGE0_URL` worker использует **local** sandbox (JS/Go), как Phase A — удобно на Windows, пока Judge0 не поднят.
 
-- `run_jobs` — jobId, userId, exerciseId, status, result, createdAt
-- `user_track_scores` — optional denormalized (или оставить `enrollments.points`)
-- индексы: `{userId, exerciseId}` unique на progress; TTL на старые run logs
+## Деплой sandbox (локально)
 
-## Очередь и параллельность
+### 1. Redis + Mongo (обязательно для /run)
 
-- Redis + workers (N реплик)
-- Rate limit: N runs / мин на user
-- Per-language concurrency caps (Go compile тяжелее JS)
-- Dead-letter для упавших jobs
+```bash
+cd kubercode-api
+docker compose up -d
+```
 
-## Docker / Kubernetes задачи (отдельный трек позже)
+Проверка: `redis-cli -p 6379 ping` → `PONG`.
 
-Не смешивать с Judge0:
-- Отдельный `kind: docker|k8s` у exercise
-- Worker с DinD или remote Docker API в изолированной сети
-- Жёсткий timeout, no host mounts, resource quotas
-- Результат = exit code + structured checks (не произвольный shell от студента без sandbox)
+### 2. Judge0 CE (Linux / WSL2 / Linux VM)
 
-## Порядок Phase B
+Judge0 требует `privileged: true` и стабильнее на Linux (на Windows Docker часто падает).
 
-1. Поднять Judge0 через Docker Compose рядом с API
-2. Адаптер `internal/runner/judge0.go` + language_id map
-3. Async jobs + Redis
-4. App: polling /runs/:id
-5. Скрыть client fallback judge полностью
-6. Auth audit всех `/me` и `/run`
-7. Leaderboard (опционально)
-8. Документация деплоя sandbox
+```bash
+cd kubercode-api
+docker compose -f docker-compose.judge0.yml up -d db redis
+# подождать ~10с
+docker compose -f docker-compose.judge0.yml up -d
+```
+
+API: http://localhost:2358/docs
+
+В `.env` API:
+
+```env
+JUDGE0_URL=http://127.0.0.1:2358
+```
+
+Перезапустить API. В `/health` будет `"judge0": true`.
+
+### 3. App flow
+
+1. Студент жмёт **Проверить**
+2. `POST /v1/exercises/:id/run` → `202 { jobId }`
+3. App поллит `GET /v1/runs/:jobId` до `passed|failed|error`
+4. Клиентский judge **отключён** (только локальный «Запустить» для console.log)
+
+## Auth-матрица
+
+| Метод | Путь | Auth |
+| --- | --- | --- |
+| GET | `/v1/tracks*` | public |
+| GET | `/v1/tracks/:slug/exercises/:id` | public, **без** `tests.code` |
+| POST | `/v1/exercises/:id/run` | **user JWT** |
+| GET | `/v1/runs/:jobId` | **user JWT**, только свой job |
+| `/v1/me/*` | | **user JWT**, userId только из токена |
+| GET | `/v1/me/leaderboard` | **user JWT**, без email |
+| `/v1/admin/*` | | **admin** |
+
+Никогда не принимать `userId` из body для чужих данных.
+
+## Language map (фрагмент)
+
+| language | Judge0 id |
+| --- | --- |
+| javascript | 63 |
+| typescript | 74 |
+| go | 60 |
+| python | 71 |
+| cpp | 54 |
+| csharp | 51 |
+| rust | 73 |
+| java | 62 |
+
+## Дальше (не в этом PR)
+
+- Отдельные runners для Docker/K8s labs
+- Webhook от Judge0 вместо wait/poll внутри worker
+- Горизонтальное масштабирование worker-реплик
+- Production secrets для Judge0/Postgres
