@@ -1,5 +1,8 @@
 # План: обучение — подписка на трек, теория, практика, мобильный UX
 
+> **Актуальный суперсет:** [implementation-plan-v2.md](./implementation-plan-v2.md)  
+> Phase B (Judge0/Docker/auth): [phase-b-sandbox.md](./phase-b-sandbox.md)
+
 Связанный документ по серверному runner: [exercise-runner.md](./exercise-runner.md).
 
 ## Цели
@@ -32,13 +35,13 @@ flowchart TD
 
 ## API
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| `POST` | `/v1/me/enrollments` | `{ trackId }` — добавить трек |
-| `GET` | `/v1/me/enrollments` | список треков профиля + progress + continueExerciseId |
-| `GET` | `/v1/me/enrollments/by-track/:trackId` | статус подписки на трек |
-| `GET` | `/v1/tracks/:slug/exercises/:id` | контент задачи (теория или практика) |
-| `PUT` | `/v1/me/progress/exercises/:id` | started/completed + code |
+| Метод  | Путь                                   | Назначение                                            |
+| ------ | -------------------------------------- | ----------------------------------------------------- |
+| `POST` | `/v1/me/enrollments`                   | `{ trackId }` — добавить трек                         |
+| `GET`  | `/v1/me/enrollments`                   | список треков профиля + progress + continueExerciseId |
+| `GET`  | `/v1/me/enrollments/by-track/:trackId` | статус подписки на трек                               |
+| `GET`  | `/v1/tracks/:slug/exercises/:id`       | контент задачи (теория или практика)                  |
+| `PUT`  | `/v1/me/progress/exercises/:id`        | started/completed + code                              |
 
 Коллекция: `track_enrollments` (`userId` + `trackId` unique).
 
@@ -46,10 +49,10 @@ flowchart TD
 
 Одна оболочка `ExerciseWorkspace`:
 
-| Тип | Левая колонка | Правая колонка |
-|-----|---------------|----------------|
+| Тип        | Левая колонка                                            | Правая колонка                                 |
+| ---------- | -------------------------------------------------------- | ---------------------------------------------- |
 | `tutorial` | краткое описание + «Отметить прочитанным» / «Продолжить» | `TheoryPanel`: article, video embed, materials |
-| `practice` | условие + тесты | редактор + Запустить |
+| `practice` | условие + тесты                                          | редактор + Запустить                           |
 
 Поля теории в Exercise: `article`, `videoUrl`, `materials[]`.  
 Админ: вкладка **Теория** на `/exercises/[id]`.
@@ -64,11 +67,11 @@ flowchart TD
 
 ## UI кнопки на странице трека
 
-| Состояние | CTA |
-|-----------|-----|
-| Не enrolled | **Добавить трек в профиль** → popup → enroll → редирект на первую теорию |
-| Enrolled, progress 0% | **Начать изучать** → firstExerciseId |
-| Enrolled, progress > 0 | **Продолжить** → continueExerciseId |
+| Состояние              | CTA                                                                      |
+| ---------------------- | ------------------------------------------------------------------------ |
+| Не enrolled            | **Добавить трек в профиль** → popup → enroll → редирект на первую теорию |
+| Enrolled, progress 0%  | **Начать изучать** → firstExerciseId                                     |
+| Enrolled, progress > 0 | **Продолжить** → continueExerciseId                                      |
 
 ## Порядок реализации (статус)
 
