@@ -548,3 +548,7 @@ KuberCode-monorepo/
 ```
 
 Локальная разработка без полного стека: `kubercode-api/docker-compose.yml` (mongo+redis) + `npm run dev` / `go run`.
+
+## CI/CD
+
+См. [docs/ci-cd.md](docs/ci-cd.md): CI в каждом репо, Deploy по SSH из monorepo (`workflow_dispatch` + secrets `DEPLOY_*`).

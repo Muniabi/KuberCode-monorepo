@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: monorepo-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose:
+    name: Compose & submodule check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify submodule directories
+        run: |
+          set -euo pipefail
+          for d in kubercode-api kubercode-app kubercode-admin kubercode-marketing; do
+            test -f "$d/Dockerfile" || { echo "missing $d/Dockerfile"; exit 1; }
+          done
+          test -f deploy/Caddyfile
+          test -f docker-compose.yml
+          test -f .env.example
+
+      - name: Validate docker compose
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          docker compose --profile judge0 --profile exposed config --quiet

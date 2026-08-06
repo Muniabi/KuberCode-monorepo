@@ -1,0 +1,65 @@
+name: Deploy
+
+# Manual (or enable push-to-main below after secrets are set).
+# Required repo secrets:
+#   DEPLOY_HOST      — e.g. 201.24.116.55 or kubercode.mikata.ru
+#   DEPLOY_USER      — e.g. root
+#   DEPLOY_SSH_KEY   — private key with access to the server
+# Optional:
+#   DEPLOY_PATH      — default ~/KuberCode-monorepo
+#   DEPLOY_COMPOSE_PROFILES — e.g. "judge0" (empty = no extra profiles)
+
+on:
+  workflow_dispatch:
+    inputs:
+      with_judge0:
+        description: "Also start Judge0 profile"
+        type: boolean
+        default: false
+  # Uncomment to auto-deploy on every push to main:
+  # push:
+  #   branches: [main]
+
+concurrency:
+  group: monorepo-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          command_timeout: 40m
+          script: |
+            set -euo pipefail
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            DEPLOY_PATH="${DEPLOY_PATH:-$HOME/KuberCode-monorepo}"
+            cd "$DEPLOY_PATH"
+
+            echo "==> git pull + submodules"
+            git fetch --all --prune
+            git pull --ff-only
+            git submodule update --init --recursive
+
+            test -f .env || { echo "Missing .env — copy from .env.example and configure DOMAIN/URLs"; exit 1; }
+
+            PROFILES=()
+            if [ "${{ inputs.with_judge0 }}" = "true" ]; then
+              PROFILES+=(--profile judge0)
+            fi
+
+            echo "==> docker compose up"
+            docker compose "${PROFILES[@]}" up -d --build
+
+            echo "==> status"
+            docker compose "${PROFILES[@]}" ps

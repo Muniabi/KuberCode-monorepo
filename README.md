@@ -50,7 +50,8 @@ docker compose up -d --build
 Caddy на **:80** → поддомены `app.` / `admin.` / `api.`.  
 `down` с теми же `--profile`, что и `up` (иначе Judge0 останется и сеть будет «in use»).
 
-Полная инструкция, Ubuntu, DNS, типичные ошибки: **[DOCKER.md](DOCKER.md)**.
+Полная инструкция, Ubuntu, DNS, типичные ошибки: **[DOCKER.md](DOCKER.md)**.  
+CI/CD (GitHub Actions): **[docs/ci-cd.md](docs/ci-cd.md)**.
 
 ## Быстрый старт (локальная разработка)
 
